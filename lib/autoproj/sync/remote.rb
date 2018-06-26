@@ -183,17 +183,49 @@ module Autoproj
                 sftp.upload!(local_path, target)
             end
 
-            def remote_autoproj(sftp, root_dir, *command, chdir: nil)
+            def remote_autoproj(sftp, root_dir, *command, chdir: nil, interactive: false)
                 remote_exec(sftp,
                     remote_path(File.join(root_dir, ".autoproj/bin/autoproj")),
-                    *command, chdir: chdir)
+                    *command, chdir: chdir, interactive: interactive)
             end
 
-            def remote_exec(sftp, *command, chdir: nil)
-                target_dir = @uri.path
-                target_dir = File.join(target_dir, chdir) if chdir
+            def remote_exec(sftp, *command, chdir: nil, interactive: false)
+                if interactive
+                    remote_interactive_exec(sftp, *command, chdir: chdir)
+                else
+                    target_dir = @uri.path
+                    target_dir = File.join(target_dir, chdir) if chdir
+                    sftp.session.exec!("cd '#{chdir}' && '" + command.join("' '") + "'")
+                end
+            end
 
-                sftp.session.exec!("cd '#{chdir}' && '" + command.join("' '") + "'")
+            def remote_interactive_exec(sftp, *command, chdir: nil)
+                channel = sftp.session.open_channel do |ch|
+                    ch.on_data do |ch, data|
+                        STDOUT.print data
+                        STDOUT.flush
+                    end
+                    ch.on_extended_data do |ch, type, data|
+                        STDERR.print data
+                    end
+
+                    ch.request_pty
+                    ch.exec("cd '#{chdir}' && '" + command.join("' '") + "'")
+                end
+
+                ssh = sftp.session
+                while channel.active?
+                    ssh.process(0.1)
+                    begin
+                        while true
+                            data = STDIN.read_nonblock(4096)
+                            channel.send_data(data)
+                        end
+                    rescue IO::WaitReadable
+                    end
+                end
+            rescue EOFError
+                channel.close
             end
 
             def local_file_get(local_path)

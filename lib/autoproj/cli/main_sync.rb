@@ -188,16 +188,21 @@ module Autoproj
             end
 
             desc 'exec NAME COMMAND', 'execute a command on a remote workspace'
+            option :interactive, doc: 'execute the command in interactive mode',
+                type: :boolean, default: false
             option :chdir, doc: 'working directory for the command',
                 type: :string, default: nil
             def exec(remote_name, *command)
                 remote = config.remote_by_name(remote_name)
                 result = remote.start do |sftp|
-                    remote.remote_autoproj(sftp, "exec", *command,
+                    remote.remote_autoproj(sftp, ws.root_dir, "exec", *command,
+                        interactive: options[:interactive],
                         chdir: options[:chdir] || ws.root_dir)
                 end
-                puts result
-                exit result.exitstatus
+                unless options[:interactive]
+                    puts result
+                    exit result.exitstatus
+                end
             end
         end
     end
