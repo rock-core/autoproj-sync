@@ -233,7 +233,6 @@ module Autoproj
                 # First check if autoproj is bootstrapped on the target already
                 bootstrap_or_update_autoproj(sftp, ws)
 
-                rsync_target = self.rsync_target
                 packages = each_outdated_package(sftp, ws, packages).to_a
 
                 info "#{packages.size} outdated packages on remote"
