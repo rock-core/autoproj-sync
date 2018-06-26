@@ -205,7 +205,8 @@ module Autoproj
                     remote_file_transfer(
                         sftp, File.join(ws.root_dir, ".autoproj/config.yml"))
                     remote_exec(
-                        sftp, File.join(ws.root_dir, ".autoproj/bin/bundler"), "install")
+                        sftp, File.join(ws.root_dir, ".autoproj/bin/autoproj"),
+                        "update", "--autoproj")
                 else
                     info "installing Autoproj on the remote"
 
