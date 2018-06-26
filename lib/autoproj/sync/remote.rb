@@ -237,6 +237,7 @@ module Autoproj
                         find { |spec| spec.name == "autoproj" }
                     autoproj_dir = autoproj_spec.full_gem_path
                     install_script = File.join(autoproj_dir, "bin", "autoproj_install")
+                    remote_mkdir_p(sftp, ws.root_dir)
                     sftp.upload!(install_script,
                         remote_path(File.join(ws.root_dir, "autoproj_install")))
                     remote_file_transfer(sftp, File.join(ws.root_dir, ".autoproj/config.yml"),
