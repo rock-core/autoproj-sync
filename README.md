@@ -18,6 +18,10 @@ Run
 autoproj plugin install autoproj-sync
 ```
 
+Autoproj Sync works only on workspaces that use separate prefixes. If you did
+not enable prefixes when bootstrapping your workspace, the easiest is to
+re-bootstrap a new clean one.
+
 ## Usage
 
 ### Preparing the remote target

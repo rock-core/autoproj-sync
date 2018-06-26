@@ -11,6 +11,10 @@ module Autoproj
                     unless @ws
                         @ws = Autoproj::Workspace.default
                         @ws.load_config
+                        unless @ws.config.separate_prefixes?
+                            raise RuntimeError, "autoproj-sync only works on workspaces "\
+                                "that have separate prefixes enabled"
+                        end
                     end
                     @ws
                 end
