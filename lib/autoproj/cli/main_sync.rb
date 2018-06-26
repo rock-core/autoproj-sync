@@ -28,15 +28,16 @@ module Autoproj
                     ws.setup_all_package_directories
                     ws.finalize_package_setup
 
-                    source_packages, _osdep_packages, _resolved_selection =
+                    source_packages, osdep_packages, _resolved_selection =
                         ws.load_packages(ws.manifest.default_packages(false),
                             recursive: true,
                             non_imported_packages: :ignore,
                             auto_exclude: false)
                     ws.finalize_setup
-                    source_packages.map do |name|
+                    source_packages = source_packages.map do |name|
                         ws.manifest.find_package_definition(name)
                     end
+                    [source_packages, osdep_packages]
                 end
 
                 def resolve_selected_remotes(*names)
@@ -58,7 +59,7 @@ module Autoproj
 
                 remote = Sync::Remote.from_uri(URI.parse(uri), name: name)
                 config.add_remote(remote)
-                packages = Autoproj.silent { ws_load }
+                packages, = Autoproj.silent { ws_load }
                 remote.start do |sftp|
                     remote.update(sftp, ws, packages)
                 end
@@ -81,7 +82,7 @@ module Autoproj
                 "display outdated packages"
             def status(*names)
                 remotes = resolve_selected_remotes(*names)
-                packages = Autoproj.silent { ws_load }
+                packages, = Autoproj.silent { ws_load }
 
                 remotes.each do |r|
                     outdated_packages =
@@ -98,7 +99,7 @@ module Autoproj
             desc 'update NAME', "trigger an update for a remote"
             def update(*names)
                 remotes = resolve_selected_remotes(*names)
-                packages = Autoproj.silent { ws_load }
+                packages, = Autoproj.silent { ws_load }
 
                 remotes.each do |r|
                     r.start do |sftp|
@@ -131,18 +132,65 @@ module Autoproj
                 end
             end
 
+            desc 'install-osdeps MANAGER_TYPE <PACKAGES...>',
+                'install osdeps coming from the local machine',
+                hide: true
+            def install_osdeps(manager_type, *packages)
+                Autobuild.silent { ws_load }
+                installer = ws.os_package_installer
+
+                installer.setup_package_managers
+                manager = installer.package_managers.fetch(manager_type)
+                installer.install_manager_packages(manager, packages)
+            end
+
+            desc 'osdeps [NAME]', 'install the osdeps on the remote'
+            def osdeps(*names)
+                _, osdep_packages = Autobuild.silent { ws_load }
+                installer = ws.os_package_installer
+
+                installer.setup_package_managers
+                all = ws.all_os_packages
+                partitioned_packages = installer.
+                    resolve_and_partition_osdep_packages(osdep_packages, all)
+
+                os_packages = partitioned_packages.delete(installer.os_package_manager)
+                if os_packages
+                    partitioned_packages = [[installer.os_package_manager, os_packages]].
+                        concat(partitioned_packages.to_a)
+                end
+
+                partitioned_packages = partitioned_packages.map do |manager, packages|
+                    manager_name, _ = installer.package_managers.
+                        find { |key, obj| manager == obj }
+                    [manager_name, packages]
+                end
+
+                remotes = resolve_selected_remotes(*names)
+                remotes.each do |remote|
+                    remote.start do |sftp|
+                        partitioned_packages.each do |manager_name, packages|
+                            result = remote.remote_autoproj(sftp, ws.root_dir,
+                                "sync", "install-osdeps",
+                                manager_name, *packages)
+                            if result.exitstatus != 0
+                                raise RuntimeError, "remote autoproj command failed\n"\
+                                    "autoproj exited with status #{result.exitstatus}\n"\
+                                    "#{result}"
+                            end
+                        end
+                    end
+                end
+            end
+
             desc 'exec NAME COMMAND', 'execute a command on a remote workspace'
             option :chdir, doc: 'working directory for the command',
                 type: :string, default: nil
             def exec(remote_name, *command)
                 remote = config.remote_by_name(remote_name)
-
-                autoproj = remote.remote_path(
-                    File.join(ws.root_dir, ".autoproj/bin/autoproj"))
-                chdir = remote.remote_path(
-                    options[:chdir] || ws.root_dir)
                 result = remote.start do |sftp|
-                    remote.remote_exec(sftp, autoproj, "exec", *command, chdir: chdir)
+                    remote.remote_autoproj(sftp, "exec", *command,
+                        chdir: options[:chdir] || ws.root_dir)
                 end
                 puts result
                 exit result.exitstatus
