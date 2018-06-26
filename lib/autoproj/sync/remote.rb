@@ -175,8 +175,11 @@ module Autoproj
                 sftp.upload!(local_path, target)
             end
 
-            def remote_exec(sftp, *command)
-                sftp.session.exec!("cd '#{@uri.path}' && '" + command.join("' '") + "'")
+            def remote_exec(sftp, *command, chdir: nil)
+                target_dir = @uri.path
+                target_dir = File.join(target_dir, chdir) if chdir
+
+                sftp.session.exec!("cd '#{chdir}' && '" + command.join("' '") + "'")
             end
 
             def local_file_get(local_path)
@@ -204,9 +207,15 @@ module Autoproj
                         sftp, File.join(ws.root_dir, ".autoproj/Gemfile"))
                     remote_file_transfer(
                         sftp, File.join(ws.root_dir, ".autoproj/config.yml"))
-                    remote_exec(
+                    result = remote_exec(
                         sftp, File.join(ws.root_dir, ".autoproj/bin/autoproj"),
                         "update", "--autoproj")
+                    unless result.exitstatus == 0
+                        raise FailedRemoteCommand, "failed to update Autoproj:\n"\
+                            "autoproj update --autoproj finished with exit status "\
+                            "#{result.exitstatus}\n"\
+                            "#{result}"
+                    end
                 else
                     info "installing Autoproj on the remote"
 
