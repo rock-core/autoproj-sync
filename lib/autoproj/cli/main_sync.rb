@@ -51,6 +51,25 @@ module Autoproj
                         names.map { |n| config.remote_by_name(n) }
                     end
                 end
+
+                def install_osdep_packages(sftp, remote, manager_name, packages)
+                    Autobuild.progress_start "sync-#{remote.name}-osdeps-#{manager_name}",
+                        "sync: installing #{packages.size} packages "\
+                        "with #{manager_name} on #{remote.name}",
+                        done_message: "sync: installed #{packages.size} "\
+                            "packages with #{manager_name}" do
+
+                        result = remote.remote_autoproj(sftp, ws.root_dir,
+                            "sync", "install-osdeps",
+                            manager_name, *packages)
+                        if result.exitstatus != 0
+                            raise RuntimeError,
+                                "remote autoproj command failed\n"\
+                                "autoproj exited with status "\
+                                "#{result.exitstatus}\n#{result}"
+                        end
+                    end
+                end
             end
 
             desc 'add NAME URL', "add a new remote target"
@@ -174,14 +193,7 @@ module Autoproj
                 remotes.each do |remote|
                     remote.start do |sftp|
                         partitioned_packages.each do |manager_name, packages|
-                            result = remote.remote_autoproj(sftp, ws.root_dir,
-                                "sync", "install-osdeps",
-                                manager_name, *packages)
-                            if result.exitstatus != 0
-                                raise RuntimeError, "remote autoproj command failed\n"\
-                                    "autoproj exited with status #{result.exitstatus}\n"\
-                                    "#{result}"
-                            end
+                            install_osdep_packages(sftp, remote, manager_name, packages)
                         end
                     end
                 end
