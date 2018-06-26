@@ -1,0 +1,7 @@
+require 'autoproj'
+require 'uri'
+require 'pathname'
+require 'net/sftp'
+require 'autoproj/sync/version'
+require 'autoproj/sync/config'
+require 'autoproj/sync/remote'
