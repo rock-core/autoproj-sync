@@ -130,6 +130,23 @@ module Autoproj
                     end
                 end
             end
+
+            desc 'exec NAME COMMAND', 'execute a command on a remote workspace'
+            option :chdir, doc: 'working directory for the command',
+                type: :string, default: nil
+            def exec(remote_name, *command)
+                remote = config.remote_by_name(remote_name)
+
+                autoproj = remote.remote_path(
+                    File.join(ws.root_dir, ".autoproj/bin/autoproj"))
+                chdir = remote.remote_path(
+                    options[:chdir] || ws.root_dir)
+                result = remote.start do |sftp|
+                    remote.remote_exec(sftp, autoproj, "exec", *command, chdir: chdir)
+                end
+                puts result
+                exit result.exitstatus
+            end
         end
     end
 end
