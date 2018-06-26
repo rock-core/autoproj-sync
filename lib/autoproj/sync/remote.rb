@@ -175,6 +175,12 @@ module Autoproj
                 sftp.upload!(local_path, target)
             end
 
+            def remote_autoproj(sftp, root_dir, *command, chdir: nil)
+                remote_exec(sftp,
+                    remote_path(File.join(root_dir, ".autoproj/bin/autoproj")),
+                    *command, chdir: chdir)
+            end
+
             def remote_exec(sftp, *command, chdir: nil)
                 target_dir = @uri.path
                 target_dir = File.join(target_dir, chdir) if chdir
