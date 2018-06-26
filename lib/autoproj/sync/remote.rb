@@ -83,7 +83,8 @@ module Autoproj
                 end
             end
 
-            private def mkdir_p(sftp, remote_path)
+            private def remote_mkdir_p(sftp, local_path)
+                remote_path = File.join(@uri.path, local_path)
                 ops = []
                 while remote_path != '/'
                     ops << [remote_path, sftp.stat(remote_path)]
@@ -122,22 +123,29 @@ module Autoproj
             end
 
             def rsync_dir(sftp, local_dir)
-                remote_dir = File.join(@uri.path, local_dir)
-                mkdir_p(sftp, remote_dir)
+                remote_dir = remote_path(local_dir)
                 ["rsync", "-a", "--delete-after", "#{local_dir}/",
                     "#{rsync_target}:#{remote_dir}/"]
             end
 
             def rsync_file(sftp, local_file)
-                remote_file = File.join(@uri.path, local_file)
-                mkdir_p(sftp, File.dirname(local_file))
+                remote_file = remote_path(local_file)
                 ["rsync", "-a", local_file,
                     "#{rsync_target}:#{remote_file}"]
             end
 
-            def update_package(sftp, pkg)
-                Autobuild.progress_start pkg, "synchronizing #{pkg.name}@#{name}",
-                    done_message: "synchronized #{pkg.name}@#{name}" do
+            def create_package_directories(sftp, pkg)
+                Autobuild.progress_start pkg, "sync: preparing #{pkg.name}@#{name}",
+                    done_message: "sync: prepared #{pkg.name}@#{name}" do
+
+                    remote_mkdir_p(sftp, pkg.autobuild.prefix)
+                    remote_mkdir_p(sftp, File.dirname(pkg.autobuild.installstamp))
+                end
+            end
+
+            def rsync_package(sftp, pkg)
+                Autobuild.progress_start pkg, "sync: updating #{pkg.name}@#{name}",
+                    done_message: "sync: updated #{pkg.name}@#{name}" do
                     ops = [rsync_dir(sftp, pkg.autobuild.prefix),
                         rsync_file(sftp, pkg.autobuild.installstamp)]
                     ops.each do |op|
@@ -255,8 +263,9 @@ module Autoproj
 
                 executor = Concurrent::FixedThreadPool.new(6)
                 futures = packages.map do |pkg|
+                    create_package_directories(sftp, pkg)
                     Concurrent::Future.execute(executor: executor) do
-                        update_package(pkg)
+                        rsync_package(sftp, pkg)
                     end
                 end
 
