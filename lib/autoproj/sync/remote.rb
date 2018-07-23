@@ -193,9 +193,28 @@ module Autoproj
                 if interactive
                     remote_interactive_exec(sftp, *command, chdir: chdir)
                 else
+                    ios = Hash[:stdout => STDOUT, :stderr => STDERR]
                     target_dir = @uri.path
                     target_dir = File.join(target_dir, chdir) if chdir
-                    sftp.session.exec!("cd '#{chdir}' && '" + command.join("' '") + "'")
+                    pid = nil
+                    command = "cd '#{target_dir}' && "\
+                        "echo \"AUTOPROJ_SYNC_PID=$$\" && "\
+                        "exec '" + command.join("' '") + "'"
+                    ch = sftp.session.exec(command) do |channel, stream, data|
+                        if !pid && (m = /^AUTOPROJ_SYNC_PID=(\d+)/.match(data))
+                            pid = Integer(m[1])
+                        else
+                            ios[stream].print(data)
+                        end
+                    end
+
+                    begin
+                        ch.wait
+                    rescue Interrupt
+                        sftp.session.exec!("kill #{pid}") if pid
+                        ch.close
+                        raise
+                    end
                 end
             end
 
@@ -314,6 +333,7 @@ module Autoproj
                 futures.each_with_index do |f, i|
                     f.value!
                 end
+
             ensure
                 if executor
                     executor.shutdown
