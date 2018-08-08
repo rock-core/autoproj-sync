@@ -3,6 +3,8 @@
 module Autoproj
     module Sync
         class Remote
+            class FailedRemoteCommand < RuntimeError; end
+
             attr_reader :uri
             attr_reader :name
 
@@ -242,26 +244,29 @@ module Autoproj
                 if interactive
                     remote_interactive_exec(sftp, *command, chdir: chdir)
                 else
-                    ios = Hash[:stdout => STDOUT, :stderr => STDERR]
+                    status = Hash.new
+                    ios = Hash[:stdout => STDOUT, :stderr => STDOUT]
                     target_dir = @uri.path
                     target_dir = File.join(target_dir, chdir) if chdir
                     pid = nil
                     command = "cd '#{target_dir}' && "\
                         "echo \"AUTOPROJ_SYNC_PID=$$\" && "\
                         "exec '" + command.join("' '") + "'"
-                    ch = sftp.session.exec(command) do |channel, stream, data|
+                    ch = sftp.session.exec(command, status: status) do |channel, stream, data|
                         if !pid && (m = /^AUTOPROJ_SYNC_PID=(\d+)/.match(data))
                             pid = Integer(m[1])
                         else
                             ios[stream].print(data)
+                            ios[stream].flush
                         end
                     end
 
                     begin
                         ch.wait
+                        status
                     rescue Interrupt
                         sftp.session.exec!("kill #{pid}") if pid
-                        ch.close
+                        ch.wait
                         raise
                     end
                 end
@@ -321,13 +326,12 @@ module Autoproj
                         sftp, File.join(ws.root_dir, ".autoproj/Gemfile"))
                     remote_file_transfer(
                         sftp, File.join(ws.root_dir, ".autoproj/config.yml"))
-                    result = remote_exec(
-                        sftp, File.join(ws.root_dir, ".autoproj/bin/autoproj"),
-                        "update", "--autoproj")
-                    unless result.exitstatus == 0
+                    result = remote_autoproj(
+                        sftp, ws.root_dir, "update", "--autoproj")
+                    unless result[:exit_code] == 0
                         raise FailedRemoteCommand, "failed to update Autoproj:\n"\
                             "autoproj update --autoproj finished with exit status "\
-                            "#{result.exitstatus}\n"\
+                            "#{result[:exit_code]}\n"\
                             "#{result}"
                     end
                 else

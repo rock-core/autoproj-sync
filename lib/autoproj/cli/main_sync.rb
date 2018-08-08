@@ -171,14 +171,17 @@ module Autoproj
                 type: :string, default: nil
             def exec(remote_name, *command)
                 remote = config.remote_by_name(remote_name)
-                result = remote.start do |sftp|
+                status = remote.start do |sftp|
                     remote.remote_autoproj(sftp, ws.root_dir, "exec", *command,
                         interactive: options[:interactive],
                         chdir: options[:chdir] || ws.root_dir)
                 end
                 unless options[:interactive]
-                    puts result
-                    exit result.exitstatus
+                    if status[:exit_signal]
+                        exit 255
+                    else
+                        exit status[:exit_code]
+                    end
                 end
             end
         end
