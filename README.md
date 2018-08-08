@@ -7,8 +7,9 @@ a local development workflow, but run things remotely in a very flexible way.
 It is not *that* magical. It is based on the assumption that:
 - the local and remote hosts have equivalent environments. In practice, it means
   that binaries built with the local machine are compatible with the environment
-  on the remote machine (same shared libraries, ...)
-- the remote environment is synchronized at the same path than the local one
+  on the remote machine (same shared libraries or using static libraries, ...)
+- the remote environment is synchronized at the exact same absolute path than
+  the local one
 
 ## Installation
 
@@ -20,7 +21,7 @@ autoproj plugin install autoproj-sync
 
 Autoproj Sync works only on workspaces that use separate prefixes. If you did
 not enable prefixes when bootstrapping your workspace, the easiest is to
-re-bootstrap a new clean one.
+re-bootstrap a new clean one, passing the `--separate-prefixes` option.
 
 ## Usage
 
@@ -37,6 +38,25 @@ To function, Autoproj Sync needs the remote target to match the local target, th
   machine
 
 Moreover the remote target should be accessible via SSH public key authentication.
+
+### Automated Synchronisation
+
+Once a target is added and enabled (see below on how to do this), Autoproj will sync
+it automatically after an update or build operation. This works well with
+
+### Sync and the VSCode/Rock integration
+
+The vscode-rock extension can use sync to debug remote programs.
+
+This currently only supports C++ programs. When creating your launch entry, simply
+add the following line to it:
+
+~~~json
+"miDebuggerServerAddress": "rock:<remote_name>:<remote_port>"
+~~~
+
+where `<remote_name>` is the name of the Sync remote and `<remote_port>` the
+port that should be used by `gdbserver`. Run, and that's it.
 
 ### CLI Usage
 
