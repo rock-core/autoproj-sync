@@ -116,12 +116,16 @@ module Autoproj
             desc 'enable NAME', "enables a previously disabled target, or all targets"
             def enable(*names)
                 names = ws.config.get('sync', Hash.new).keys if names.empty?
+                packages = nil
                 names.each do |name|
-                    update_target_config(name) do |config|
-                        unless config['enabled']
-                            remote = config.find_remote_by_name(config['name'])
-                            synchronize(remote)
-                            config['enabled'] = true
+                    config.update_remote_config(name) do |remote_config|
+                        unless remote_config['enabled']
+                            remote = config.remote_by_name(name)
+                            packages, = Autoproj.silent { ws_load } unless packages
+                            remote.start do |sftp|
+                                remote.update(sftp, ws, packages)
+                            end
+                            remote_config['enabled'] = true
                         end
                     end
                 end
@@ -131,7 +135,7 @@ module Autoproj
             def disable(*names)
                 names = ws.config.get('sync', Hash.new).keys if names.empty?
                 names.each do |name|
-                    update_target_config(name) do |config|
+                    config.update_remote_config(name) do |config|
                         config['enabled'] = false
                     end
                 end
