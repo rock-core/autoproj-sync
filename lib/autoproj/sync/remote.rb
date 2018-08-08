@@ -101,6 +101,10 @@ module Autoproj
             end
 
             def autoproj_annex_files(ws)
+                user_files = %w[env.sh].
+                    map do |file|
+                        File.join(ws.root_dir, file)
+                    end
                 autoproj_files = %w[env.yml installation-manifest].
                     map do |file|
                         File.join(ws.root_dir, '.autoproj', file)
@@ -109,7 +113,8 @@ module Autoproj
                     map do |file|
                         File.join(ws.prefix_dir, file)
                     end
-                [*autoproj_files, *bundler_files]
+                [*user_files, *ws.env.source_before, *ws.env.source_after,
+                    *autoproj_files, *bundler_files]
             end
 
             def rsync_target
