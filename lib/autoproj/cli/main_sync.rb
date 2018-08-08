@@ -52,24 +52,6 @@ module Autoproj
                     end
                 end
 
-                def install_osdep_packages(sftp, remote, manager_name, packages)
-                    Autobuild.progress_start "sync-#{remote.name}-osdeps-#{manager_name}",
-                        "sync: installing #{packages.size} packages "\
-                        "with #{manager_name} on #{remote.name}",
-                        done_message: "sync: installed #{packages.size} "\
-                            "packages with #{manager_name}" do
-
-                        result = remote.remote_autoproj(sftp, ws.root_dir,
-                            "sync", "install-osdeps",
-                            manager_name, *packages)
-                        if result.exitstatus != 0
-                            raise RuntimeError,
-                                "remote autoproj command failed\n"\
-                                "autoproj exited with status "\
-                                "#{result.exitstatus}\n#{result}"
-                        end
-                    end
-                end
             end
 
             desc 'add NAME URL', "add a new remote target"
@@ -170,31 +152,10 @@ module Autoproj
             desc 'osdeps [NAME]', 'install the osdeps on the remote'
             def osdeps(*names)
                 _, osdep_packages = Autobuild.silent { ws_load }
-                installer = ws.os_package_installer
-
-                installer.setup_package_managers
-                all = ws.all_os_packages
-                partitioned_packages = installer.
-                    resolve_and_partition_osdep_packages(osdep_packages, all)
-
-                os_packages = partitioned_packages.delete(installer.os_package_manager)
-                if os_packages
-                    partitioned_packages = [[installer.os_package_manager, os_packages]].
-                        concat(partitioned_packages.to_a)
-                end
-
-                partitioned_packages = partitioned_packages.map do |manager, packages|
-                    manager_name, _ = installer.package_managers.
-                        find { |key, obj| manager == obj }
-                    [manager_name, packages]
-                end
-
                 remotes = resolve_selected_remotes(*names)
-                remotes.each do |remote|
-                    remote.start do |sftp|
-                        partitioned_packages.each do |manager_name, packages|
-                            install_osdep_packages(sftp, remote, manager_name, packages)
-                        end
+                remotes.each do |r|
+                    r.start do |sftp|
+                        r.osdeps(sftp, ws, osdep_packages)
                     end
                 end
             end

@@ -139,6 +139,50 @@ module Autoproj
                     "#{rsync_target}:#{remote_file}"]
             end
 
+            def osdeps(sftp, ws, osdep_packages)
+                installer = ws.os_package_installer
+
+                installer.setup_package_managers
+                all = ws.all_os_packages
+                partitioned_packages = installer.
+                    resolve_and_partition_osdep_packages(osdep_packages, all)
+
+                os_packages = partitioned_packages.delete(installer.os_package_manager)
+                if os_packages
+                    partitioned_packages = [[installer.os_package_manager, os_packages]].
+                        concat(partitioned_packages.to_a)
+                end
+
+                partitioned_packages = partitioned_packages.map do |manager, packages|
+                    manager_name, _ = installer.package_managers.
+                        find { |key, obj| manager == obj }
+                    [manager_name, packages]
+                end
+
+                partitioned_packages.each do |manager_name, packages|
+                    install_osdep_packages(sftp, ws, manager_name, packages)
+                end
+            end
+
+            def install_osdep_packages(sftp, ws, manager_name, packages)
+                Autobuild.progress_start "sync-#{name}-osdeps-#{manager_name}",
+                    "sync: handling #{packages.size} osdeps #{manager_name} packages "\
+                        "on #{name}",
+                    done_message: "sync: handled #{packages.size} "\
+                        "osdeps #{manager_name} packages on #{name}" do
+
+                    result = remote_autoproj(sftp, ws.root_dir,
+                        "sync", "install-osdeps",
+                        manager_name, *packages)
+                    if result[:exit_code] != 0
+                        raise RuntimeError,
+                            "remote autoproj command failed\n"\
+                            "autoproj exited with status "\
+                            "#{result[:exit_code]}\n#{result}"
+                    end
+                end
+            end
+
             def create_package_directories(sftp, pkg)
                 Autobuild.progress_start pkg, "sync: preparing #{pkg.name}@#{name}",
                     done_message: "sync: prepared #{pkg.name}@#{name}" do
