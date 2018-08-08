@@ -306,7 +306,7 @@ module Autoproj
             end
 
             def info(message)
-                Autoproj.message "  #{message}"
+                Autoproj.message "  #{message}", force: true
             end
 
             def bootstrap_or_update_autoproj(sftp, ws)
@@ -316,10 +316,11 @@ module Autoproj
                     local_gemfile_lock  = local_file_get(gemfile_lock_path)
                     if remote_gemfile_lock == local_gemfile_lock
                         info "remote Autoproj install up-to-date"
+                        info "sync: Autoproj install up-to-date on #{name}"
                         return
                     end
 
-                    info "updating the remote Autoproj install"
+                    info "sync: updating the Autoproj install on #{name}"
 
                     remote_file_put(sftp, gemfile_lock_path, local_gemfile_lock)
                     remote_file_transfer(
@@ -335,7 +336,7 @@ module Autoproj
                             "#{result}"
                     end
                 else
-                    info "installing Autoproj on the remote"
+                    info "sync: installing Autoproj on #{name}"
 
                     autoproj_spec = Bundler.definition.specs.
                         find { |spec| spec.name == "autoproj" }
@@ -364,7 +365,7 @@ module Autoproj
 
                 packages = each_outdated_package(sftp, ws, packages).to_a
 
-                info "#{packages.size} outdated packages on remote"
+                info "sync: #{packages.size} outdated packages on #{name}"
 
                 executor = Concurrent::FixedThreadPool.new(6)
                 futures = packages.map do |pkg|
@@ -376,8 +377,8 @@ module Autoproj
 
                 # Copy some autoproj installation-manifest files
                 Autobuild.progress_start "sync-#{name}-autoproj",
-                    "updating Autoproj configuration files on #{name}",
-                    done_message: "updated Autoproj configuration files on #{name}" do
+                    "sync: updating Autoproj configuration files on #{name}",
+                    done_message: "sync: updated Autoproj configuration files on #{name}" do
                     autoproj_annex_files(ws).each do |file|
                         sftp.upload!(file, File.join(@uri.path, file))
                     end
