@@ -116,7 +116,8 @@ module Autoproj
                         File.join(ws.prefix_dir, file)
                     end
                 [*user_files, *ws.env.source_before, *ws.env.source_after,
-                    *autoproj_files, *bundler_files]
+                 *autoproj_files, *bundler_files].
+                   find_all { |file| File.exist?(file) }
             end
 
             def rsync_target
@@ -380,6 +381,22 @@ module Autoproj
                     "sync: updating Autoproj configuration files on #{name}",
                     done_message: "sync: updated Autoproj configuration files on #{name}" do
                     autoproj_annex_files(ws).each do |file|
+                        missing = []
+                        dir = File.join(@uri.path, File.dirname(file))
+                        while dir != '/'
+                            begin
+                                sftp.stat!(dir)
+                                break
+                            rescue Net::SFTP::StatusException
+                                missing.unshift dir
+                                dir = File.dirname(dir)
+                            end
+                        end
+
+                        missing.each do |dir|
+                            sftp.mkdir!(dir)
+                        end
+
                         sftp.upload!(file, File.join(@uri.path, file))
                     end
                 end
