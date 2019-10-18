@@ -4,6 +4,7 @@ module Autoproj
     module Sync
         class Remote
             class FailedRemoteCommand < RuntimeError; end
+            class TransferError < RuntimeError; end
 
             attr_reader :uri
             attr_reader :name
@@ -15,10 +16,11 @@ module Autoproj
                 Remote.new(uri, name: name, enabled: enabled)
             end
 
-            def initialize(uri, name: uri, enabled: true)
+            def initialize(uri, name: uri, enabled: true, watch: false)
                 @uri  = uri
                 @enabled = enabled
                 @name = name
+                @watch = watch
             end
 
             def enabled?
@@ -31,7 +33,8 @@ module Autoproj
 
             def start
                 result = nil
-                Net::SFTP.start(@uri.host, @uri.user, password: @uri.password) do |sftp|
+                Net::SFTP.start(@uri.host, @uri.user,
+                                port: @uri.port, password: @uri.password) do |sftp|
                     result = yield(sftp)
                 end
                 result
@@ -132,13 +135,13 @@ module Autoproj
 
             def rsync_dir(sftp, local_dir)
                 remote_dir = remote_path(local_dir)
-                ["rsync", "-a", "--delete-after", "#{local_dir}/",
+                ["rsync", '-e', "ssh -p #{@uri.port}", '-a', '--delete-after', "#{local_dir}/",
                     "#{rsync_target}:#{remote_dir}/"]
             end
 
             def rsync_file(sftp, local_file)
                 remote_file = remote_path(local_file)
-                ["rsync", "-a", local_file,
+                ["rsync", '-e', "ssh -p #{@uri.port}", "-a", local_file,
                     "#{rsync_target}:#{remote_file}"]
             end
 
@@ -201,6 +204,7 @@ module Autoproj
                     ops = [rsync_dir(sftp, pkg.autobuild.prefix),
                         rsync_file(sftp, pkg.autobuild.installstamp)]
                     ops.each do |op|
+                        puts "RUNNING #{op.inspect}"
                         if !system(*op)
                             raise "update of #{pkg.name} failed"
                         end
@@ -227,12 +231,16 @@ module Autoproj
                 sftp.download!(remote_path(local_path))
             end
 
-            def remote_file_put(sftp, local_path, content)
-                sftp.upload!(StringIO.new(content), remote_path(local_path))
+            def remote_file_put(sftp, local_path, content, target: remote_path(local_path))
+                sftp.upload!(StringIO.new(content), target)
+            rescue Net::SFTP::StatusException => e
+                raise TransferError, "failed to create #{target} on remote: #{e.description}"
             end
 
             def remote_file_transfer(sftp, local_path, target: remote_path(local_path))
                 sftp.upload!(local_path, target)
+            rescue Net::SFTP::StatusException => e
+                raise TransferError, "failed transfer of #{local_path} to #{target}: #{e.description}"
             end
 
             def remote_autoproj(sftp, root_dir, *command, chdir: nil, interactive: false)
@@ -344,8 +352,10 @@ module Autoproj
                     autoproj_dir = autoproj_spec.full_gem_path
                     install_script = File.join(autoproj_dir, "bin", "autoproj_install")
                     remote_mkdir_p(sftp, ws.root_dir)
-                    sftp.upload!(install_script,
-                        remote_path(File.join(ws.root_dir, "autoproj_install")))
+                    remote_file_transfer(
+                        sftp, install_script,
+                        target: remote_path(File.join(ws.root_dir, "autoproj_install"))
+                    )
                     remote_file_transfer(sftp, File.join(ws.root_dir, ".autoproj/config.yml"),
                         target: remote_path(File.join(ws.root_dir, 'bootstrap-config.yml')))
                     remote_file_transfer(sftp, File.join(ws.root_dir, ".autoproj/Gemfile"),
